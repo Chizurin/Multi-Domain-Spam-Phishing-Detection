@@ -19,8 +19,11 @@ pip install -r requirements.txt
 # 1. Download Super Dataset CSV from https://github.com/smspamresearch/spstudy
 #    and copy it to data/raw/super_sms_dataset.csv
 
-# 2. Load & preprocess all datasets
+# 2. Load all datasets
 python scripts/load_datasets.py
+
+# 3. Clean text (language filtering, dedup, stop words, punctuation)
+python scripts/preprocess.py
 ```
 
 ---
@@ -33,6 +36,7 @@ python scripts/load_datasets.py
 | Discord phishing-scam | 2,000 | 13.8% | Phase 1 test / Phase 2 train+test |
 | PhiUSIIL (UCI #967) | 235,795 URLs | ~50% | Phishing detector (separate pipeline) |
 
-Outputs written to `data/processed/` after running `load_datasets.py`.
+`load_datasets.py` writes raw-normalized CSVs to `data/processed/`.
+`preprocess.py` writes cleaned CSVs (`sms_text_cleaned.csv`, `discord_text_cleaned.csv`) to the same directory.
 
 ---
