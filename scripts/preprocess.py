@@ -56,10 +56,13 @@ def clean_text(text: str) -> str:
     """Apply full text cleaning pipeline to a single message."""
     if not isinstance(text, str):
         return ""
+    import emoji
     # Replace URLs before lowercasing so the regex matches cleanly
     text = _URL_RE.sub("URLTOKEN", text)
+    # Convert emojis to text descriptions (e.g. 💰 → money_bag) before stripping non-ASCII
+    text = emoji.demojize(text, delimiters=(" ", " "))
     text = text.lower()
-    # Remove non-ASCII characters (emoji, special Unicode)
+    # Remove remaining non-ASCII characters (non-emoji special Unicode)
     text = _NON_ASCII_RE.sub(" ", text)
     # Remove punctuation and special characters
     text = _PUNCT_RE.sub(" ", text)

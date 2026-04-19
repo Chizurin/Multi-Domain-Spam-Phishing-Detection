@@ -1,12 +1,16 @@
 pandas
-scikit-learn
-xgboost
-datasets        # HuggingFace — Discord dataset
-ucimlrepo       # PhiUSIIL URL dataset (UCI #967)
-scipy
-notebook        # Jupyter
-matplotlib
-seaborn
+datasets
+ucimlrepo
 nltk
 langdetect
 deep-translator
+emoji
+torch
+transformers
+simpletransformers
+scikit-learn
+scipy
+matplotlib
+seaborn
+textattack
+notebook
