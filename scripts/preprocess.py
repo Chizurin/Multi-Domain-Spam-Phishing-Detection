@@ -28,7 +28,7 @@ PROCESSED = Path("data/processed")
 _STOP_WORDS = set(stopwords.words("english"))
 _URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
 _NON_ASCII_RE = re.compile(r"[^\x00-\x7F]+")
-_PUNCT_RE = re.compile(r"[^\w\s]")
+_PUNCT_RE = re.compile(r"[^\w\s$%@#]")
 _MULTI_SPACE_RE = re.compile(r"\s+")
 
 
