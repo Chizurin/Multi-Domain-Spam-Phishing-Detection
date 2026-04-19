@@ -7,3 +7,6 @@ scipy
 notebook        # Jupyter
 matplotlib
 seaborn
+nltk
+langdetect
+deep-translator
