@@ -30,6 +30,8 @@ _URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
 _NON_ASCII_RE = re.compile(r"[^\x00-\x7F]+")
 _PUNCT_RE = re.compile(r"[^\w\s$%@#]")
 _MULTI_SPACE_RE = re.compile(r"\s+")
+_REPEATED_CHARS_RE = re.compile(r"(.)\1{2,}")
+_ALL_CAPS_RE = re.compile(r"\b[A-Z]{2,}\b")
 
 
 def _googletrans_is_english(text: str) -> bool:
@@ -82,6 +84,12 @@ def clean_df(df: pd.DataFrame, domain_name: str) -> pd.DataFrame:
     dropped_lang = (~english_mask).sum()
     df = df[english_mask].copy()
 
+    df["has_repeated_chars"] = df["text"].apply(
+        lambda t: int(bool(_REPEATED_CHARS_RE.search(t))) if isinstance(t, str) else 0
+    )
+    df["has_all_caps"] = df["text"].apply(
+        lambda t: int(bool(_ALL_CAPS_RE.search(t))) if isinstance(t, str) else 0
+    )
     df["text"] = df["text"].apply(clean_text)
     df = df[df["text"].str.strip().ne("")]
 
@@ -107,16 +115,13 @@ def clean_discord() -> pd.DataFrame:
     src = PROCESSED / "discord_clean.csv"
     df = pd.read_csv(src)
 
-    behavioral_cols = [
-        c for c in ["time_since_join", "message_length", "num_roles",
-                     "has_link", "has_mention", "word_count"]
-        if c in df.columns
-    ]
+    # capture every column that isn't text/label so none are silently dropped
+    extra_cols = [c for c in df.columns if c not in ("text", "label")]
 
     df = clean_df(df, "discord")
 
     out = PROCESSED / "discord_text_cleaned.csv"
-    save_cols = ["text", "label"] + [c for c in behavioral_cols if c in df.columns]
+    save_cols = ["text", "label"] + [c for c in extra_cols if c in df.columns]
     df[save_cols].to_csv(out, index=False)
     log.info(f"  → {out}")
     return df
