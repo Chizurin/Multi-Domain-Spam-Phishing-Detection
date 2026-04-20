@@ -1,4 +1,10 @@
 .venv/
 data/raw/
 data/processed/
+data/splits/
+
+# holdout.csv is the exception — committed to repo intentionally
+!data/holdout.csv
+
+checkpoints/
 
