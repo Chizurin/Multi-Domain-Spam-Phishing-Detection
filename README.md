@@ -22,8 +22,9 @@ pip install -r requirements.txt
 # 2. Load all datasets
 python scripts/load_datasets.py
 
-# 3. Clean text (language filtering, dedup, stop words, punctuation)
+# 3. Clean text, generate splits, and create holdout set
 python scripts/preprocess.py
+# Then immediately: git add data/holdout.csv && git commit (should already be committed at this point)
 ```
 
 ---
