@@ -115,8 +115,9 @@ def clean_sms() -> pd.DataFrame:
     src = PROCESSED / "super_dataset_clean.csv"
     df = pd.read_csv(src)
     df = clean_df(df, "sms")
+    df["domain"] = 0
     out = PROCESSED / "sms_text_cleaned.csv"
-    df[["text", "label"]].to_csv(out, index=False)
+    df[["text", "label", "domain"]].to_csv(out, index=False)
     log.info(f"  → {out}")
     return df
 
@@ -129,9 +130,10 @@ def clean_discord() -> pd.DataFrame:
     extra_cols = [c for c in df.columns if c not in ("text", "label")]
 
     df = clean_df(df, "discord")
+    df["domain"] = 1
 
     out = PROCESSED / "discord_text_cleaned.csv"
-    save_cols = ["text", "label"] + [c for c in extra_cols if c in df.columns]
+    save_cols = ["text", "label", "domain"] + [c for c in extra_cols if c in df.columns]
     df[save_cols].to_csv(out, index=False)
     log.info(f"  → {out}")
     return df
