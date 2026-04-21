@@ -1,10 +1,15 @@
 """
-preprocess.py — text cleaning pipeline for SMS and Discord datasets
+preprocess.py — text cleaning and train/test/holdout split pipeline
 
 Input:  data/processed/super_dataset_clean.csv
         data/processed/discord_clean.csv
 Output: data/processed/sms_text_cleaned.csv
         data/processed/discord_text_cleaned.csv
+        data/holdout.csv            ← commit immediately, never regenerate
+        data/splits/sms_train.csv
+        data/splits/sms_test.csv
+        data/splits/discord_train.csv
+        data/splits/discord_test.csv
 
 Run: python scripts/preprocess.py
 """
@@ -17,6 +22,7 @@ import nltk
 import pandas as pd
 from langdetect import detect, LangDetectException
 from nltk.corpus import stopwords
+from sklearn.model_selection import train_test_split
 
 nltk.download("stopwords", quiet=True)
 
@@ -24,6 +30,10 @@ logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
 
 PROCESSED = Path("data/processed")
+SPLITS = Path("data/splits")
+HOLDOUT_PATH = Path("data/holdout.csv")
+RANDOM_STATE = 42
+HOLDOUT_SIZE = 225
 
 _STOP_WORDS = set(stopwords.words("english"))
 _URL_RE = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
@@ -77,7 +87,7 @@ def clean_df(df: pd.DataFrame, domain_name: str) -> pd.DataFrame:
     """Apply full cleaning pipeline to a DataFrame with a 'text' column."""
     before = len(df)
 
-    df = df.dropna(subset=["text"])
+    df = df.dropna(subset=["text", "label"])
     df = df.drop_duplicates(subset=["text"])
 
     english_mask = df["text"].apply(is_english)
@@ -127,9 +137,62 @@ def clean_discord() -> pd.DataFrame:
     return df
 
 
+def make_holdout(sms_df: pd.DataFrame) -> pd.DataFrame:
+    """Sample 225 spam messages from SMS for holdout. Generated once — never regenerated."""
+    if HOLDOUT_PATH.exists():
+        log.info(f"[holdout] already exists — skipping (delete manually to regenerate)")
+        return pd.read_csv(HOLDOUT_PATH)
+
+    spam = sms_df[sms_df["label"] == 1]
+    holdout = spam.sample(n=HOLDOUT_SIZE, random_state=RANDOM_STATE)
+    HOLDOUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    holdout[["text", "label"]].to_csv(HOLDOUT_PATH, index=False)
+    log.info(f"[holdout] {len(holdout)} spam messages → {HOLDOUT_PATH}  ← commit this now")
+    return holdout
+
+
+def split_sms(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """80/20 stratified split. Holdout messages excluded before splitting."""
+    SPLITS.mkdir(parents=True, exist_ok=True)
+
+    if HOLDOUT_PATH.exists():
+        holdout_texts = set(pd.read_csv(HOLDOUT_PATH)["text"])
+        df = df[~df["text"].isin(holdout_texts)]
+
+    train, test = train_test_split(
+        df, test_size=0.2, random_state=RANDOM_STATE, stratify=df["label"]
+    )
+    train.to_csv(SPLITS / "sms_train.csv", index=False)
+    test.to_csv(SPLITS / "sms_test.csv", index=False)
+    log.info(f"[sms splits] train={len(train):,}  test={len(test):,}")
+    return train, test
+
+
+def split_discord(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """80/20 stratified split — kept separate from SMS for Phase 1/2 boundary."""
+    SPLITS.mkdir(parents=True, exist_ok=True)
+
+    train, test = train_test_split(
+        df, test_size=0.2, random_state=RANDOM_STATE, stratify=df["label"]
+    )
+    train.to_csv(SPLITS / "discord_train.csv", index=False)
+    test.to_csv(SPLITS / "discord_test.csv", index=False)
+    log.info(f"[discord splits] train={len(train):,}  test={len(test):,}")
+    return train, test
+
+
 if __name__ == "__main__":
-    log.info("=== Text cleaning pipeline ===\n")
-    clean_sms()
+    log.info("=== Preprocessing pipeline ===\n")
+
+    sms = clean_sms()
     print()
-    clean_discord()
-    log.info("\nDone.")
+    discord = clean_discord()
+    print()
+
+    make_holdout(sms)
+    print()
+
+    split_sms(sms)
+    split_discord(discord)
+
+    log.info("\nDone. Commit data/holdout.csv before anyone starts training.")

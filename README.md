@@ -11,10 +11,8 @@ The F1 difference between zero-shot (Phase 1) and retrained (Phase 2) Discord pe
 ## Quick start
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-
-pip install -r requirements.txt
+uv venv && source .venv/bin/activate
+uv pip sync requirements.lock
 
 # 1. Download Super Dataset CSV from https://github.com/smspamresearch/spstudy
 #    and copy it to data/raw/super_sms_dataset.csv
@@ -22,9 +20,12 @@ pip install -r requirements.txt
 # 2. Load all datasets
 python scripts/load_datasets.py
 
-# 3. Clean text (language filtering, dedup, stop words, punctuation)
+# 3. Clean text, generate splits, and create holdout set
 python scripts/preprocess.py
+# Then immediately: git add data/holdout.csv && git commit
 ```
+
+> To update dependencies: edit `requirements.txt`, run `uv pip compile requirements.txt -o requirements.lock`, and commit the updated lockfile.
 
 ---
 
