@@ -10,12 +10,23 @@ The F1 difference between zero-shot (Phase 1) and retrained (Phase 2) Discord pe
 
 ## Quick start
 
+**Option A — uv (recommended)**
+```bash
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
+```
+
+**Option B — standard pip**
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-
 pip install -r requirements.txt
+```
 
+Then run the project steps:
+
+```bash
 # 1. Download Super Dataset CSV from https://github.com/smspamresearch/spstudy
 #    and copy it to data/raw/super_sms_dataset.csv
 
