@@ -5,10 +5,10 @@ nltk
 langdetect
 deep-translator
 emoji
+scikit-learn
 torch
 transformers
 simpletransformers
-scikit-learn
 scipy
 matplotlib
 seaborn
