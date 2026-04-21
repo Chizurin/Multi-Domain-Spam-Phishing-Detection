@@ -87,7 +87,7 @@ def clean_df(df: pd.DataFrame, domain_name: str) -> pd.DataFrame:
     """Apply full cleaning pipeline to a DataFrame with a 'text' column."""
     before = len(df)
 
-    df = df.dropna(subset=["text"])
+    df = df.dropna(subset=["text", "label"])
     df = df.drop_duplicates(subset=["text"])
 
     english_mask = df["text"].apply(is_english)

@@ -29,7 +29,7 @@ def load_super_dataset() -> pd.DataFrame:
             "Download from https://github.com/smspamresearch/spstudy and copy the CSV there."
         )
 
-    df = pd.read_csv(raw_path, encoding="latin-1")
+    df = pd.read_csv(raw_path, encoding="latin-1", engine="python")
     df = df.rename(columns={"SMSes": "text", "Labels": "label"})
     df = df.dropna(subset=["text", "label"])
     df["label"] = df["label"].astype(int)
@@ -48,6 +48,7 @@ def load_discord_dataset() -> pd.DataFrame:
     df = df.rename(columns={"lable": "label", "msg_content": "text"})
     df = df.dropna(subset=["text", "label"])
     df["label"] = df["label"].astype(int)
+    df["text"] = df["text"].str.replace(r"[\r\n]+", " ", regex=True)
 
     keep = ["text", "label", "msg_timestamp", "usr_joined_at", "time_since_join",
             "message_length", "word_count", "has_link", "has_mention", "num_roles"]
