@@ -5,7 +5,6 @@ Commands:
   python models/train.py --mode sms_only   → Run A: RoBERTa on SMS only
   python models/train.py --mode naive      → Run B: RoBERTa on SMS + Discord
   python models/train.py --mode dann       → Run C: domain-adversarial training
-  python models/train.py --mode phishing   → URL phishing classifier (Random Forest)
 """
 
 import argparse
@@ -14,13 +13,10 @@ import math
 import sys
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from transformers import DataCollatorWithPadding, RobertaForSequenceClassification, Trainer, TrainingArguments
@@ -261,65 +257,6 @@ def train_naive():
     )
 
 
-def train_phishing():
-    from ucimlrepo import fetch_ucirepo
-
-    out_path = CHECKPOINTS / "phishing_classifier.pkl"
-
-    # UCI Phishing Websites (id=327) — 10 features computable from URL string alone.
-    # All encoded as -1 (phishing) / 0 (suspicious) / 1 (legitimate).
-    # Features requiring WHOIS, page fetch, or external APIs are excluded.
-    url_features = [
-        "having_ip_address",       # -1 if IP address used as domain
-        "url_length",              # 1 if <54, 0 if 54-75, -1 if >75
-        "shortining_service",      # -1 if known URL shortener
-        "having_at_symbol",        # -1 if @ present in URL
-        "double_slash_redirecting",# -1 if // appears after position 7
-        "prefix_suffix",           # -1 if - present in domain
-        "having_sub_domain",       # 1=no subdomain, 0=one, -1=many
-        "sslfinal_state",          # 1=HTTPS, 0=suspicious, -1=HTTP
-        "port",                    # -1 if non-standard port used
-        "https_token",             # -1 if 'https' appears in domain name
-    ]
-
-    log.info("Loading UCI Phishing Websites dataset (id=327)...")
-    ds = fetch_ucirepo(id=327)
-    X = ds.data.features[url_features]
-    # result: 1=legitimate, -1=phishing → remap to 0=legitimate, 1=phishing
-    y = (ds.data.targets.iloc[:, 0].values == -1).astype(int)
-
-    log.info(f"Features: {X.shape[1]}  Samples: {len(y):,}")
-    log.info(f"Label dist — legitimate: {(y == 0).sum():,}  phishing: {(y == 1).sum():,}")
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=RANDOM_STATE
-    )
-    log.info(f"Train: {len(y_train):,}  Test: {len(y_test):,}")
-
-    rf = RandomForestClassifier(
-        n_estimators=200,
-        n_jobs=-1,
-        class_weight="balanced",
-        random_state=RANDOM_STATE,
-    )
-    log.info("Training Random Forest + calibrating (3-fold, isotonic)...")
-    calibrated = CalibratedClassifierCV(rf, cv=3, method="isotonic")
-    calibrated.fit(X_train, y_train)
-
-    probs = calibrated.predict_proba(X_test)[:, 1]
-    preds = (probs >= 0.5).astype(int)
-    log.info(
-        f"\nPhishing test — F1: {f1_score(y_test, preds):.4f}  "
-        f"P: {precision_score(y_test, preds):.4f}  "
-        f"R: {recall_score(y_test, preds):.4f}  "
-        f"AUC: {roc_auc_score(y_test, probs):.4f}"
-    )
-
-    CHECKPOINTS.mkdir(parents=True, exist_ok=True)
-    joblib.dump(calibrated, out_path)
-    log.info(f"Saved → {out_path}")
-
-
 def train_dann():
     from dann import DANNSpamClassifier
 
@@ -416,7 +353,7 @@ def train_dann():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--mode", required=True, choices=["sms_only", "naive", "dann", "phishing"]
+        "--mode", required=True, choices=["sms_only", "naive", "dann"]
     )
     args = parser.parse_args()
 
@@ -424,8 +361,6 @@ def main():
         train_sms_only()
     elif args.mode == "naive":
         train_naive()
-    elif args.mode == "phishing":
-        train_phishing()
     elif args.mode == "dann":
         train_dann()
     else:

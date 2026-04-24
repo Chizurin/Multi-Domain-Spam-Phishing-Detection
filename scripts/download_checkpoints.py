@@ -14,7 +14,6 @@ Checkpoints saved to:
   checkpoints/sms_only/               ← Run A
   checkpoints/naive/                  ← Run B
   checkpoints/dann/                   ← Run C
-  checkpoints/phishing_classifier.pkl ← URL phishing classifier
 """
 
 import argparse
@@ -39,12 +38,6 @@ HF_RUNS = {
         "repo_suffix": "spam-detector-dann",
         "local_dir": CHECKPOINTS / "dann",
         "mode": "snapshot",
-    },
-    "phishing": {
-        "repo_suffix": "spam-detector-phishing",
-        "local_dir": CHECKPOINTS,
-        "filename": "phishing_classifier.pkl",
-        "mode": "file",
     },
 }
 

@@ -33,7 +33,7 @@ python scripts/preprocess.py
 
 Trained checkpoints are hosted on HuggingFace Hub. Use the scripts below to download them (skip training) or upload your own after training.
 
-Valid run names for both scripts: `sms_only`, `naive`, `dann`, `phishing`.
+Valid run names for both scripts: `sms_only`, `naive`, `dann`.
 
 ### Downloading checkpoints (skip training)
 
@@ -52,7 +52,6 @@ No login required. Files are saved directly to the paths the rest of the project
 | `sms_only` | `checkpoints/sms_only/` |
 | `naive` | `checkpoints/naive/` |
 | `dann` | `checkpoints/dann/` |
-| `phishing` | `checkpoints/phishing_classifier.pkl` |
 
 ### Uploading checkpoints
 
@@ -77,7 +76,6 @@ The script skips any run whose checkpoint directory doesn't exist yet.
 |---|---|---|---|
 | Super SMS Dataset | 67,018 | 39.1% | Train |
 | Discord phishing-scam | 2,000 | 13.8% | Phase 1 test / Phase 2 train+test |
-| PhiUSIIL (UCI #967) | 235,795 URLs | ~50% | Phishing detector (separate pipeline) |
 
 `load_datasets.py` writes raw-normalized CSVs to `data/processed/`.
 `preprocess.py` writes cleaned CSVs (`sms_text_cleaned.csv`, `discord_text_cleaned.csv`) to the same directory.

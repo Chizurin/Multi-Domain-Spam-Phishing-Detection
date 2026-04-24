@@ -1,11 +1,10 @@
 """
-load_datasets.py — load and normalize all three raw datasets into data/processed/
+load_datasets.py — load and normalize raw datasets into data/processed/
 
 Outputs
 -------
 data/processed/super_dataset_clean.csv   columns: text, label (0=ham, 1=spam)
 data/processed/discord_clean.csv         columns: text, label, time_since_join, has_link, message_length
-data/processed/phiusiil_clean.csv        87 UCI URL features + label (0=legit, 1=phishing)
 
 Run: python scripts/load_datasets.py
 """
@@ -14,7 +13,6 @@ from pathlib import Path
 
 import pandas as pd
 from datasets import load_dataset
-from ucimlrepo import fetch_ucirepo
 
 PROCESSED = Path("data/processed")
 PROCESSED.mkdir(parents=True, exist_ok=True)
@@ -60,31 +58,8 @@ def load_discord_dataset() -> pd.DataFrame:
     return df[keep]
 
 
-# ── 3. PhiUSIIL URL features (UCI #967) ──────────────────────────────────────
-def load_phiusiil_dataset() -> pd.DataFrame:
-    repo = fetch_ucirepo(id=967)
-    X = repo.data.features
-    y = repo.data.targets
-
-    df = X.copy()
-    target_col = y.columns[0]
-    df["label"] = y[target_col].values
-
-    # normalize to 0/1 if not already
-    unique = sorted(df["label"].unique())
-    if unique != [0, 1]:
-        mapping = {unique[0]: 0, unique[-1]: 1}
-        df["label"] = df["label"].map(mapping)
-
-    out = PROCESSED / "phiusiil_clean.csv"
-    df.to_csv(out, index=False)
-    print(f"[phiusiil]{len(df):,} rows → {out}  (phishing={df['label'].mean():.1%})")
-    return df
-
-
 if __name__ == "__main__":
     print("Loading datasets...\n")
     load_super_dataset()
     load_discord_dataset()
-    load_phiusiil_dataset()
     print("\nDone. Processed files written to data/processed/")
