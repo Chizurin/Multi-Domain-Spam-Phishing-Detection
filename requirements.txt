@@ -8,6 +8,7 @@ emoji
 scikit-learn
 torch
 transformers
+accelerate>=1.1.0
 simpletransformers
 scipy
 matplotlib

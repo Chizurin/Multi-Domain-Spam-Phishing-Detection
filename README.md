@@ -29,6 +29,48 @@ python scripts/preprocess.py
 
 ---
 
+## Checkpoints
+
+Trained checkpoints are hosted on HuggingFace Hub. Use the scripts below to download them (skip training) or upload your own after training.
+
+Valid run names for both scripts: `sms_only`, `naive`, `dann`, `phishing`.
+
+### Downloading checkpoints (skip training)
+
+```bash
+# Download all checkpoints
+python scripts/download_checkpoints.py --username <hf-username>
+
+# Download specific runs only
+python scripts/download_checkpoints.py --username <hf-username> --runs sms_only naive
+```
+
+No login required. Files are saved directly to the paths the rest of the project expects:
+
+| Run | Saved to |
+|---|---|
+| `sms_only` | `checkpoints/sms_only/` |
+| `naive` | `checkpoints/naive/` |
+| `dann` | `checkpoints/dann/` |
+| `phishing` | `checkpoints/phishing_classifier.pkl` |
+
+### Uploading checkpoints
+
+```bash
+# One-time login
+huggingface-cli login
+
+# Upload all trained runs
+python scripts/upload_checkpoints.py --username your-hf-username
+
+# Upload specific runs only
+python scripts/upload_checkpoints.py --username your-hf-username --runs sms_only naive
+```
+
+The script skips any run whose checkpoint directory doesn't exist yet.
+
+---
+
 ## Datasets
 
 | Dataset | Rows | Spam % | Use |
