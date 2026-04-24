@@ -62,7 +62,7 @@ class WeightedTrainer(Trainer):
         self.class_weights = class_weights
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        labels = inputs.pop("labels")
+        labels = inputs["labels"]
         outputs = model(**inputs)
         loss_fn = torch.nn.CrossEntropyLoss(
             weight=self.class_weights.to(outputs.logits.device)
