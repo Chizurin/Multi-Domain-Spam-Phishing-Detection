@@ -2,6 +2,8 @@
 #    uv pip compile requirements.txt -o requirements.lock
 absl-py==2.4.0
     # via tensorboard
+accelerate==1.13.0
+    # via -r requirements.txt
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.13.5
@@ -165,6 +167,7 @@ httpx==0.28.1
     #   jupyterlab
 huggingface-hub==1.11.0
     # via
+    #   accelerate
     #   datasets
     #   tokenizers
     #   transformers
@@ -337,6 +340,7 @@ num2words==0.5.14
     # via textattack
 numpy==2.4.4
     # via
+    #   accelerate
     #   bert-score
     #   bpemb
     #   contourpy
@@ -402,6 +406,7 @@ overrides==3.1.0
     # via konoha
 packaging==26.1
     # via
+    #   accelerate
     #   altair
     #   bert-score
     #   datasets
@@ -462,6 +467,7 @@ protobuf==7.34.1
     #   wandb
 psutil==7.2.2
     # via
+    #   accelerate
     #   ipykernel
     #   language-tool-python
 ptyprocess==0.7.0
@@ -505,6 +511,7 @@ python-json-logger==4.1.0
     # via jupyter-events
 pyyaml==6.0.3
     # via
+    #   accelerate
     #   datasets
     #   huggingface-hub
     #   jupyter-events
@@ -558,7 +565,9 @@ rpds-py==0.30.0
     #   jsonschema
     #   referencing
 safetensors==0.7.0
-    # via transformers
+    # via
+    #   accelerate
+    #   transformers
 scikit-learn==1.8.0
     # via
     #   -r requirements.txt
@@ -651,6 +660,7 @@ toml==0.10.2
 torch==2.11.0
     # via
     #   -r requirements.txt
+    #   accelerate
     #   bert-score
     #   flair
     #   textattack
