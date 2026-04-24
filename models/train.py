@@ -10,6 +10,7 @@ Commands:
 
 import argparse
 import logging
+import math
 import sys
 from pathlib import Path
 
@@ -68,6 +69,67 @@ class WeightedTrainer(Trainer):
         )
         loss = loss_fn(outputs.logits, labels)
         return (loss, outputs) if return_outputs else loss
+
+
+class DANNDataset(torch.utils.data.Dataset):
+    def __init__(self, df: pd.DataFrame):
+        self.texts = df["text"].fillna("").tolist()
+        self.labels = df["label"].tolist()
+        self.domains = df["domain"].tolist()
+
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        enc = tokenize(self.texts[idx])
+        return {
+            "input_ids": enc["input_ids"].squeeze(0),
+            "attention_mask": enc["attention_mask"].squeeze(0),
+            "labels": torch.tensor(self.labels[idx], dtype=torch.long),
+            "domain_labels": torch.tensor(self.domains[idx], dtype=torch.long),
+        }
+
+
+def _dann_collate(batch):
+    """Dynamic padding collate that preserves domain_labels alongside span labels."""
+    pad_id = _get_tokenizer().pad_token_id
+    max_len = max(item["input_ids"].size(0) for item in batch)
+
+    input_ids = torch.stack([
+        torch.nn.functional.pad(item["input_ids"], (0, max_len - item["input_ids"].size(0)), value=pad_id)
+        for item in batch
+    ])
+    attention_mask = torch.stack([
+        torch.nn.functional.pad(item["attention_mask"], (0, max_len - item["attention_mask"].size(0)), value=0)
+        for item in batch
+    ])
+    return {
+        "input_ids": input_ids,
+        "attention_mask": attention_mask,
+        "labels": torch.stack([item["labels"] for item in batch]),
+        "domain_labels": torch.stack([item["domain_labels"] for item in batch]),
+    }
+
+
+def _evaluate_dann(model, test_df: pd.DataFrame, device: torch.device):
+    loader = torch.utils.data.DataLoader(
+        DANNDataset(test_df), batch_size=64, shuffle=False, collate_fn=_dann_collate
+    )
+    all_preds, all_labels = [], []
+    model.eval()
+    with torch.no_grad():
+        for batch in loader:
+            spam_logits, _ = model(
+                batch["input_ids"].to(device),
+                batch["attention_mask"].to(device),
+            )
+            all_preds.extend(spam_logits.argmax(dim=1).cpu().tolist())
+            all_labels.extend(batch["labels"].tolist())
+    return (
+        f1_score(all_labels, all_preds, average="binary", zero_division=0),
+        precision_score(all_labels, all_preds, average="binary", zero_division=0),
+        recall_score(all_labels, all_preds, average="binary", zero_division=0),
+    )
 
 
 def compute_metrics(eval_pred):
@@ -241,6 +303,99 @@ def train_phishing():
     log.info(f"Saved → {out_path}")
 
 
+def train_dann():
+    from dann import DANNSpamClassifier
+
+    out_dir = CHECKPOINTS / "dann"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    sms_train = pd.read_csv(SPLITS / "sms_train.csv")[["text", "label", "domain"]].dropna()
+    discord_train = pd.read_csv(SPLITS / "discord_train.csv")[["text", "label", "domain"]].dropna()
+    train_df = pd.concat([sms_train, discord_train], ignore_index=True)
+
+    sms_test = pd.read_csv(SPLITS / "sms_test.csv")[["text", "label", "domain"]].dropna()
+    discord_test = pd.read_csv(SPLITS / "discord_test.csv")[["text", "label", "domain"]].dropna()
+    test_df = pd.concat([sms_test, discord_test], ignore_index=True)
+
+    log.info(f"Train: {len(train_df):,}  Test: {len(test_df):,}")
+    log.info(f"Train label dist:  {train_df['label'].value_counts().to_dict()}")
+    log.info(f"Train domain dist: {train_df['domain'].value_counts().to_dict()}")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    log.info(f"Device: {device}")
+
+    spam_w = compute_class_weight("balanced", classes=np.array([0, 1]), y=train_df["label"].values)
+    domain_w = compute_class_weight("balanced", classes=np.array([0, 1]), y=train_df["domain"].values)
+    log.info(f"Spam weights   — ham: {spam_w[0]:.4f}  spam: {spam_w[1]:.4f}")
+    log.info(f"Domain weights — SMS: {domain_w[0]:.4f}  Discord: {domain_w[1]:.4f}")
+
+    spam_criterion = torch.nn.CrossEntropyLoss(
+        weight=torch.tensor(spam_w, dtype=torch.float).to(device)
+    )
+    domain_criterion = torch.nn.CrossEntropyLoss(
+        weight=torch.tensor(domain_w, dtype=torch.float).to(device)
+    )
+
+    NUM_EPOCHS = 3
+    BATCH_SIZE = 16
+    LR = 2e-5
+    LOG_EVERY = 100
+
+    train_loader = torch.utils.data.DataLoader(
+        DANNDataset(train_df),
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        collate_fn=_dann_collate,
+    )
+
+    model = DANNSpamClassifier().to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
+
+    total_steps = NUM_EPOCHS * len(train_loader)
+    global_step = 0
+    best_f1 = 0.0
+
+    for epoch in range(NUM_EPOCHS):
+        model.train()
+        for batch in train_loader:
+            progress = global_step / total_steps
+            lambda_ = 2 / (1 + math.exp(-10 * progress)) - 1
+            model.grl.lambda_ = lambda_
+
+            spam_logits, domain_logits = model(
+                batch["input_ids"].to(device),
+                batch["attention_mask"].to(device),
+            )
+
+            spam_loss = spam_criterion(spam_logits, batch["labels"].to(device))
+            domain_loss = domain_criterion(domain_logits, batch["domain_labels"].to(device))
+            total_loss = spam_loss + lambda_ * domain_loss
+
+            optimizer.zero_grad()
+            total_loss.backward()
+            optimizer.step()
+
+            if global_step % LOG_EVERY == 0:
+                log.info(
+                    f"step {global_step:>6}/{total_steps} | epoch {epoch + 1}/{NUM_EPOCHS} | "
+                    f"λ={lambda_:.4f} | spam_loss={spam_loss.item():.4f} | "
+                    f"domain_loss={domain_loss.item():.4f}"
+                )
+
+            global_step += 1
+
+        f1, precision, recall = _evaluate_dann(model, test_df, device)
+        log.info(f"\nEpoch {epoch + 1} eval — F1: {f1:.4f}  P: {precision:.4f}  R: {recall:.4f}")
+
+        if f1 > best_f1:
+            best_f1 = f1
+            torch.save(model.state_dict(), out_dir / "model.pt")
+            log.info(f"  → Saved best model (F1={best_f1:.4f})")
+
+    _get_tokenizer().save_pretrained(str(out_dir))
+    log.info(f"\nTraining complete — best F1: {best_f1:.4f}  Checkpoint → {out_dir}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -254,6 +409,8 @@ def main():
         train_naive()
     elif args.mode == "phishing":
         train_phishing()
+    elif args.mode == "dann":
+        train_dann()
     else:
         raise NotImplementedError(f"--mode {args.mode} not yet implemented")
 
