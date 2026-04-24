@@ -27,7 +27,7 @@ def tokenize(text: str) -> dict:
     return _get_tokenizer()(
         text,
         max_length=MAX_LENGTH,
-        padding="max_length",
+        padding=False,
         truncation=True,
         return_tensors="pt",
     )
