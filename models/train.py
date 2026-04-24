@@ -266,13 +266,30 @@ def train_phishing():
 
     out_path = CHECKPOINTS / "phishing_classifier.pkl"
 
-    log.info("Loading PhiUSIIL dataset...")
-    ds = fetch_ucirepo(id=967)
-    X = ds.data.features.select_dtypes(include="number")
-    y = ds.data.targets.iloc[:, 0].values
+    # UCI Phishing Websites (id=327) — 10 features computable from URL string alone.
+    # All encoded as -1 (phishing) / 0 (suspicious) / 1 (legitimate).
+    # Features requiring WHOIS, page fetch, or external APIs are excluded.
+    url_features = [
+        "having_ip_address",       # -1 if IP address used as domain
+        "url_length",              # 1 if <54, 0 if 54-75, -1 if >75
+        "shortining_service",      # -1 if known URL shortener
+        "having_at_symbol",        # -1 if @ present in URL
+        "double_slash_redirecting",# -1 if // appears after position 7
+        "prefix_suffix",           # -1 if - present in domain
+        "having_sub_domain",       # 1=no subdomain, 0=one, -1=many
+        "sslfinal_state",          # 1=HTTPS, 0=suspicious, -1=HTTP
+        "port",                    # -1 if non-standard port used
+        "https_token",             # -1 if 'https' appears in domain name
+    ]
+
+    log.info("Loading UCI Phishing Websites dataset (id=327)...")
+    ds = fetch_ucirepo(id=327)
+    X = ds.data.features[url_features]
+    # result: 1=legitimate, -1=phishing → remap to 0=legitimate, 1=phishing
+    y = (ds.data.targets.iloc[:, 0].values == -1).astype(int)
 
     log.info(f"Features: {X.shape[1]}  Samples: {len(y):,}")
-    log.info(f"Label dist — ham: {(y == 0).sum():,}  phishing: {(y == 1).sum():,}")
+    log.info(f"Label dist — legitimate: {(y == 0).sum():,}  phishing: {(y == 1).sum():,}")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=RANDOM_STATE
