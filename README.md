@@ -81,3 +81,16 @@ The script skips any run whose checkpoint directory doesn't exist yet.
 `preprocess.py` writes cleaned CSVs (`sms_text_cleaned.csv`, `discord_text_cleaned.csv`) to the same directory.
 
 ---
+
+## Evaluation
+
+```bash
+python eval/evaluate.py --run sms_only   # Run A: Discord gap (Phase 1)
+python eval/evaluate.py --run naive      # Run B: naive combined
+python eval/evaluate.py --run dann       # Run C: DANN
+python eval/evaluate.py --run all        # All runs — comparison table
+```
+
+All runs are evaluated on the same held-out Discord test split. See `docs/evaluation_results.md` for full results and interpretation.
+
+---
