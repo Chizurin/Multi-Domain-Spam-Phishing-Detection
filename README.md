@@ -29,6 +29,18 @@ python scripts/preprocess.py
 
 ---
 
+## Training
+
+```bash
+python models/train.py --mode sms_only   # Run A: RoBERTa on SMS only
+python models/train.py --mode naive      # Run B: RoBERTa on SMS + Discord
+python models/train.py --mode dann       # Run C: domain-adversarial training
+```
+
+Checkpoints are saved to `checkpoints/<run>/` automatically.
+
+---
+
 ## Checkpoints
 
 Trained checkpoints are hosted on HuggingFace Hub. Use the scripts below to download them (skip training) or upload your own after training.
