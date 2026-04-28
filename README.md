@@ -8,6 +8,21 @@ The F1 difference between zero-shot (Phase 1) and retrained (Phase 2) Discord pe
 
 ---
 
+## Results
+
+All runs evaluated on the same held-out Discord test split (334 messages).
+
+| Run | Trained on | F1 | Precision | Recall |
+|---|---|---|---|---|
+| A — sms_only | SMS only | 0.7069 | 0.6308 | 0.8039 |
+| B — naive | SMS + Discord | **0.8155** | 0.8077 | 0.8235 |
+| C — dann | SMS + Discord + GRL | 0.7255 | 0.7255 | 0.7255 |
+| D — behavioral | SMS + Discord + behavioral | 0.7810 | 0.7593 | 0.8039 |
+
+The A→B delta (+0.109 F1) is the primary result. Neither DANN nor behavioral features improved over naive. See `docs/evaluation_results.md` for full interpretation.
+
+---
+
 ## Quick start
 
 ```bash
@@ -32,9 +47,10 @@ python scripts/preprocess.py
 ## Training
 
 ```bash
-python models/train.py --mode sms_only   # Run A: RoBERTa on SMS only
-python models/train.py --mode naive      # Run B: RoBERTa on SMS + Discord
-python models/train.py --mode dann       # Run C: domain-adversarial training
+python models/train.py --mode sms_only    # Run A: RoBERTa on SMS only
+python models/train.py --mode naive       # Run B: RoBERTa on SMS + Discord
+python models/train.py --mode dann        # Run C: domain-adversarial training
+python models/train.py --mode behavioral  # Run D: RoBERTa + behavioral features
 ```
 
 Checkpoints are saved to `checkpoints/<run>/` automatically.
