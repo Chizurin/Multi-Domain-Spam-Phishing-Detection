@@ -8,6 +8,21 @@ The F1 difference between zero-shot (Phase 1) and retrained (Phase 2) Discord pe
 
 ---
 
+## Results
+
+All runs evaluated on the same held-out Discord test split (334 messages).
+
+| Run | Trained on | F1 | Precision | Recall |
+|---|---|---|---|---|
+| A — sms_only | SMS only | 0.7069 | 0.6308 | 0.8039 |
+| B — naive | SMS + Discord | **0.8155** | 0.8077 | 0.8235 |
+| C — dann | SMS + Discord + GRL | 0.7255 | 0.7255 | 0.7255 |
+| D — behavioral | SMS + Discord + behavioral | 0.7810 | 0.7593 | 0.8039 |
+
+The A→B delta (+0.109 F1) is the primary result. Neither DANN nor behavioral features improved over naive. See `docs/evaluation_results.md` for full interpretation.
+
+---
+
 ## Quick start
 
 ```bash
@@ -29,11 +44,24 @@ python scripts/preprocess.py
 
 ---
 
+## Training
+
+```bash
+python models/train.py --mode sms_only    # Run A: RoBERTa on SMS only
+python models/train.py --mode naive       # Run B: RoBERTa on SMS + Discord
+python models/train.py --mode dann        # Run C: domain-adversarial training
+python models/train.py --mode behavioral  # Run D: RoBERTa + behavioral features
+```
+
+Checkpoints are saved to `checkpoints/<run>/` automatically.
+
+---
+
 ## Checkpoints
 
 Trained checkpoints are hosted on HuggingFace Hub. Use the scripts below to download them (skip training) or upload your own after training.
 
-Valid run names for both scripts: `sms_only`, `naive`, `dann`, `phishing`.
+Valid run names for both scripts: `sms_only`, `naive`, `dann`.
 
 ### Downloading checkpoints (skip training)
 
@@ -52,7 +80,6 @@ No login required. Files are saved directly to the paths the rest of the project
 | `sms_only` | `checkpoints/sms_only/` |
 | `naive` | `checkpoints/naive/` |
 | `dann` | `checkpoints/dann/` |
-| `phishing` | `checkpoints/phishing_classifier.pkl` |
 
 ### Uploading checkpoints
 
@@ -77,9 +104,21 @@ The script skips any run whose checkpoint directory doesn't exist yet.
 |---|---|---|---|
 | Super SMS Dataset | 67,018 | 39.1% | Train |
 | Discord phishing-scam | 2,000 | 13.8% | Phase 1 test / Phase 2 train+test |
-| PhiUSIIL (UCI #967) | 235,795 URLs | ~50% | Phishing detector (separate pipeline) |
 
 `load_datasets.py` writes raw-normalized CSVs to `data/processed/`.
 `preprocess.py` writes cleaned CSVs (`sms_text_cleaned.csv`, `discord_text_cleaned.csv`) to the same directory.
+
+---
+
+## Evaluation
+
+```bash
+python eval/evaluate.py --run sms_only   # Run A: Discord gap (Phase 1)
+python eval/evaluate.py --run naive      # Run B: naive combined
+python eval/evaluate.py --run dann       # Run C: DANN
+python eval/evaluate.py --run all        # All runs — comparison table
+```
+
+All runs are evaluated on the same held-out Discord test split. See `docs/evaluation_results.md` for full results and interpretation.
 
 ---

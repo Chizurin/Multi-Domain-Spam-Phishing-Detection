@@ -1,6 +1,5 @@
 pandas
 datasets
-ucimlrepo
 nltk
 langdetect
 deep-translator

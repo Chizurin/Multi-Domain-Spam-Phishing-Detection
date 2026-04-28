@@ -2,10 +2,10 @@
 train.py — model training pipeline
 
 Commands:
-  python models/train.py --mode sms_only   → Run A: RoBERTa on SMS only
-  python models/train.py --mode naive      → Run B: RoBERTa on SMS + Discord
-  python models/train.py --mode dann       → Run C: domain-adversarial training
-  python models/train.py --mode phishing   → URL phishing classifier (Random Forest)
+  python models/train.py --mode sms_only    → Run A: RoBERTa on SMS only
+  python models/train.py --mode naive       → Run B: RoBERTa on SMS + Discord
+  python models/train.py --mode dann        → Run C: domain-adversarial training
+  python models/train.py --mode behavioral  → Run D: RoBERTa + behavioral features
 """
 
 import argparse
@@ -14,13 +14,10 @@ import math
 import sys
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.calibration import CalibratedClassifierCV
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from transformers import DataCollatorWithPadding, RobertaForSequenceClassification, Trainer, TrainingArguments
@@ -261,48 +258,6 @@ def train_naive():
     )
 
 
-def train_phishing():
-    from ucimlrepo import fetch_ucirepo
-
-    out_path = CHECKPOINTS / "phishing_classifier.pkl"
-
-    log.info("Loading PhiUSIIL dataset...")
-    ds = fetch_ucirepo(id=967)
-    X = ds.data.features.select_dtypes(include="number")
-    y = ds.data.targets.iloc[:, 0].values
-
-    log.info(f"Features: {X.shape[1]}  Samples: {len(y):,}")
-    log.info(f"Label dist — ham: {(y == 0).sum():,}  phishing: {(y == 1).sum():,}")
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=RANDOM_STATE
-    )
-    log.info(f"Train: {len(y_train):,}  Test: {len(y_test):,}")
-
-    rf = RandomForestClassifier(
-        n_estimators=200,
-        n_jobs=-1,
-        class_weight="balanced",
-        random_state=RANDOM_STATE,
-    )
-    log.info("Training Random Forest + calibrating (3-fold, isotonic)...")
-    calibrated = CalibratedClassifierCV(rf, cv=3, method="isotonic")
-    calibrated.fit(X_train, y_train)
-
-    probs = calibrated.predict_proba(X_test)[:, 1]
-    preds = (probs >= 0.5).astype(int)
-    log.info(
-        f"\nPhishing test — F1: {f1_score(y_test, preds):.4f}  "
-        f"P: {precision_score(y_test, preds):.4f}  "
-        f"R: {recall_score(y_test, preds):.4f}  "
-        f"AUC: {roc_auc_score(y_test, probs):.4f}"
-    )
-
-    CHECKPOINTS.mkdir(parents=True, exist_ok=True)
-    joblib.dump(calibrated, out_path)
-    log.info(f"Saved → {out_path}")
-
-
 def train_dann():
     from dann import DANNSpamClassifier
 
@@ -396,10 +351,180 @@ def train_dann():
     log.info(f"\nTraining complete — best F1: {best_f1:.4f}  Checkpoint → {out_dir}")
 
 
+def train_behavioral(encoder_path: str = "roberta-base", out_name: str = "behavioral"):
+    import joblib
+    from sklearn.preprocessing import StandardScaler
+
+    from behavioral import BEHAVIORAL_COLS, N_BEHAVIORAL, BehavioralSpamClassifier
+
+    out_dir = CHECKPOINTS / out_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load splits
+    sms_train = pd.read_csv(SPLITS / "sms_train.csv")[["text", "label"]].dropna()
+    sms_test  = pd.read_csv(SPLITS / "sms_test.csv")[["text", "label"]].dropna()
+    discord_train = pd.read_csv(SPLITS / "discord_train.csv")
+    discord_test  = pd.read_csv(SPLITS / "discord_test.csv")
+
+    # Fit scaler on complete Discord training rows only — no NaN contamination
+    complete_mask = discord_train[BEHAVIORAL_COLS].notna().all(axis=1)
+    scaler = StandardScaler()
+    scaler.fit(discord_train.loc[complete_mask, BEHAVIORAL_COLS])
+    joblib.dump(scaler, out_dir / "scaler.pkl")
+    log.info(f"Scaler fit on {complete_mask.sum()} complete Discord rows → {out_dir / 'scaler.pkl'}")
+
+    def _prepare_behavioral(df, has_data: bool) -> np.ndarray:
+        """Return (N, N_BEHAVIORAL) array with scaling and has_behavioral flag.
+
+        Missing features → filled with feature mean → maps to 0.0 in scaled space.
+        has_data=False (SMS) → all feature dims 0.0, has_behavioral flag = 0.
+        """
+        raw_cols = BEHAVIORAL_COLS  # the 8 raw feature columns (flag appended below)
+        n = len(df)
+        features = np.zeros((n, len(raw_cols)), dtype=np.float32)
+        if has_data:
+            for i, col in enumerate(raw_cols):
+                if col in df.columns:
+                    # fill NaN with feature mean so they map to 0 in scaled space
+                    filled = df[col].fillna(scaler.mean_[i]).values.astype(np.float32)
+                    features[:, i] = filled
+            features = scaler.transform(features).astype(np.float32)
+            # has_behavioral flag: 1 if all raw features were present, else 0
+            has_flag = df[raw_cols].notna().all(axis=1).values.astype(np.float32).reshape(-1, 1)
+        else:
+            # SMS — no behavioral data at all, flag = 0
+            has_flag = np.zeros((n, 1), dtype=np.float32)
+        return np.hstack([features, has_flag])
+
+    discord_train_b = _prepare_behavioral(discord_train, has_data=True)
+    discord_test_b  = _prepare_behavioral(discord_test,  has_data=True)
+    sms_train_b     = _prepare_behavioral(sms_train,     has_data=False)
+    sms_test_b      = _prepare_behavioral(sms_test,      has_data=False)
+
+    keep = ["text", "label"]
+    train_df = pd.concat([sms_train[keep], discord_train[keep]], ignore_index=True)
+    test_df  = pd.concat([sms_test[keep],  discord_test[keep]],  ignore_index=True)
+    train_behavioral_arr = np.vstack([sms_train_b, discord_train_b])
+    test_behavioral_arr  = np.vstack([sms_test_b,  discord_test_b])
+
+    log.info(f"Train: {len(train_df):,}  Test: {len(test_df):,}")
+    log.info(f"Train label dist: {train_df['label'].value_counts().to_dict()}")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    log.info(f"Device: {device}")
+
+    class_weights = compute_class_weight("balanced", classes=np.array([0, 1]), y=train_df["label"].values)
+    log.info(f"Class weights — ham: {class_weights[0]:.4f}  spam: {class_weights[1]:.4f}")
+    criterion = torch.nn.CrossEntropyLoss(
+        weight=torch.tensor(class_weights, dtype=torch.float).to(device)
+    )
+
+    NUM_EPOCHS = 3
+    BATCH_SIZE = 16
+    LR = 2e-5
+    LOG_EVERY = 100
+
+    class BehavioralDataset(torch.utils.data.Dataset):
+        def __init__(self, df, behavioral_arr):
+            self.texts      = df["text"].tolist()
+            self.labels     = df["label"].tolist()
+            self.behavioral = behavioral_arr
+
+        def __len__(self):
+            return len(self.texts)
+
+        def __getitem__(self, idx):
+            return {
+                "text":       self.texts[idx],
+                "label":      self.labels[idx],
+                "behavioral": self.behavioral[idx],
+            }
+
+    def _behavioral_collate(batch):
+        tokenizer   = _get_tokenizer()
+        texts       = [b["text"] for b in batch]
+        labels      = torch.tensor([b["label"] for b in batch], dtype=torch.long)
+        behavioral  = torch.tensor(np.array([b["behavioral"] for b in batch]), dtype=torch.float32)
+        enc = tokenizer(texts, padding=True, truncation=True, max_length=512, return_tensors="pt")
+        return {
+            "input_ids":      enc["input_ids"],
+            "attention_mask": enc["attention_mask"],
+            "labels":         labels,
+            "behavioral":     behavioral,
+        }
+
+    def _evaluate_behavioral(model, df, behavioral_arr, device):
+        model.eval()
+        all_preds, all_labels = [], []
+        loader = torch.utils.data.DataLoader(
+            BehavioralDataset(df, behavioral_arr), batch_size=32, collate_fn=_behavioral_collate
+        )
+        with torch.no_grad():
+            for batch in loader:
+                logits = model(
+                    batch["input_ids"].to(device),
+                    batch["attention_mask"].to(device),
+                    batch["behavioral"].to(device),
+                )
+                preds = logits.argmax(dim=-1).cpu().tolist()
+                all_preds.extend(preds)
+                all_labels.extend(batch["labels"].tolist())
+        return (
+            f1_score(all_labels, all_preds, zero_division=0),
+            precision_score(all_labels, all_preds, zero_division=0),
+            recall_score(all_labels, all_preds, zero_division=0),
+        )
+
+    train_loader = torch.utils.data.DataLoader(
+        BehavioralDataset(train_df, train_behavioral_arr),
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        collate_fn=_behavioral_collate,
+    )
+
+    model = BehavioralSpamClassifier(N_BEHAVIORAL, encoder_path=encoder_path).to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
+
+    total_steps = NUM_EPOCHS * len(train_loader)
+    global_step = 0
+    best_f1 = 0.0
+
+    for epoch in range(NUM_EPOCHS):
+        model.train()
+        for batch in train_loader:
+            logits = model(
+                batch["input_ids"].to(device),
+                batch["attention_mask"].to(device),
+                batch["behavioral"].to(device),
+            )
+            loss = criterion(logits, batch["labels"].to(device))
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            if global_step % LOG_EVERY == 0:
+                log.info(
+                    f"step {global_step:>6}/{total_steps} | epoch {epoch + 1}/{NUM_EPOCHS} | "
+                    f"loss={loss.item():.4f}"
+                )
+            global_step += 1
+
+        f1, precision, recall = _evaluate_behavioral(model, test_df, test_behavioral_arr, device)
+        log.info(f"\nEpoch {epoch + 1} eval — F1: {f1:.4f}  P: {precision:.4f}  R: {recall:.4f}")
+
+        if f1 > best_f1:
+            best_f1 = f1
+            torch.save(model.state_dict(), out_dir / "model.pt")
+            log.info(f"  → Saved best model (F1={best_f1:.4f})")
+
+    _get_tokenizer().save_pretrained(str(out_dir))
+    log.info(f"\nTraining complete — best F1: {best_f1:.4f}  Checkpoint → {out_dir}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--mode", required=True, choices=["sms_only", "naive", "dann", "phishing"]
+        "--mode", required=True, choices=["sms_only", "naive", "dann", "behavioral"]
     )
     args = parser.parse_args()
 
@@ -407,10 +532,10 @@ def main():
         train_sms_only()
     elif args.mode == "naive":
         train_naive()
-    elif args.mode == "phishing":
-        train_phishing()
     elif args.mode == "dann":
         train_dann()
+    elif args.mode == "behavioral":
+        train_behavioral()
     else:
         raise NotImplementedError(f"--mode {args.mode} not yet implemented")
 

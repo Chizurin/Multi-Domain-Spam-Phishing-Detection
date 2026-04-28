@@ -15,7 +15,6 @@ Repos created:
   {username}/spam-detector-sms-only      ← Run A
   {username}/spam-detector-naive         ← Run B
   {username}/spam-detector-dann          ← Run C
-  {username}/spam-detector-phishing      ← URL phishing classifier
 """
 
 import argparse
@@ -42,13 +41,6 @@ HF_RUNS = {
         "repo_suffix": "spam-detector-dann",
         "description": "Run C — Domain-Adversarial RoBERTa (DANN) trained on SMS + Discord",
         "dir": CHECKPOINTS / "dann",
-        "mode": "files",
-    },
-    "phishing": {
-        "repo_suffix": "spam-detector-phishing",
-        "description": "URL phishing classifier — Random Forest + isotonic calibration (PhiUSIIL dataset)",
-        "dir": None,
-        "files": [CHECKPOINTS / "phishing_classifier.pkl"],
         "mode": "files",
     },
 }
